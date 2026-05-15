@@ -1,0 +1,428 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>VoxCPM2 Demo</title>
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<style>
+  :root {
+    --bg: #0f1115; --panel: #171a21; --border: #262b36; --text: #e8ecf1;
+    --muted: #8a93a3; --accent: #6aa3ff; --accent2: #1f6feb; --err: #ff6b6b;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.4 -apple-system, system-ui, Segoe UI, Roboto, sans-serif; }
+  header { padding: 16px 20px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
+  h1 { font-size: 18px; margin: 0; }
+  main { padding: 16px 20px; max-width: 1100px; margin: 0 auto; }
+  .tabs { display: flex; gap: 6px; margin: 12px 0 16px; border-bottom: 1px solid var(--border); }
+  .tab { padding: 8px 14px; cursor: pointer; color: var(--muted); border: none; background: transparent; font: inherit; border-bottom: 2px solid transparent; }
+  .tab.active { color: var(--text); border-color: var(--accent); }
+  .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 16px; margin-bottom: 16px; }
+  .row { display: flex; gap: 12px; flex-wrap: wrap; }
+  .col { flex: 1 1 320px; min-width: 280px; }
+  label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+  input[type=text], input[type=number], select, textarea {
+    width: 100%; background: #0d1017; border: 1px solid var(--border); color: var(--text);
+    padding: 8px 10px; border-radius: 6px; font: inherit;
+  }
+  textarea { min-height: 90px; resize: vertical; }
+  input[type=range] { width: 100%; }
+  .range-row { display: flex; align-items: center; gap: 8px; }
+  .range-row span { font-variant-numeric: tabular-nums; min-width: 50px; text-align: right; color: var(--muted); }
+  button.primary {
+    background: var(--accent2); color: white; border: 0; padding: 10px 16px; border-radius: 6px;
+    font: inherit; cursor: pointer;
+  }
+  button.primary:disabled { opacity: 0.5; cursor: not-allowed; }
+  button.ghost { background: transparent; border: 1px solid var(--border); color: var(--text); padding: 6px 10px; border-radius: 6px; cursor: pointer; }
+  .status { margin-top: 10px; font-size: 13px; color: var(--muted); white-space: pre-wrap; }
+  .status.err { color: var(--err); }
+  .mode-desc { color: var(--muted); margin: 0 0 12px; font-size: 13px; }
+  audio { width: 100%; margin-top: 8px; }
+  .field { margin-bottom: 12px; }
+  fieldset { border: 1px solid var(--border); border-radius: 6px; padding: 10px 12px; margin: 0 0 12px; }
+  legend { padding: 0 6px; color: var(--muted); font-size: 12px; }
+  .pill { display: inline-block; padding: 1px 8px; background: #1f2531; border-radius: 999px; font-size: 11px; color: var(--muted); margin-left: 6px; }
+  details summary { cursor: pointer; color: var(--muted); }
+  .ttfb { font-size: 12px; color: var(--accent); }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>VoxCPM2 Inference Demo <span class="pill" id="model-info">…</span></h1>
+  <a class="ghost" href="/docs" target="_blank">OpenAPI</a>
+</header>
+<main>
+  <div class="tabs" id="tabs">
+    <button class="tab active" data-mode="ultimate">Ultimate Cloning</button>
+    <button class="tab" data-mode="controllable">Controllable Cloning</button>
+    <button class="tab" data-mode="design">Voice Design</button>
+  </div>
+
+  <p class="mode-desc" id="mode-desc"></p>
+
+  <div class="panel">
+    <div class="field">
+      <label>Target text (what should be spoken)</label>
+      <textarea id="target_text" placeholder="Type the text you want synthesized..."></textarea>
+    </div>
+
+    <div id="prompt-block">
+      <fieldset>
+        <legend>Voice prompt (sets the speaker)</legend>
+        <div class="row">
+          <div class="col">
+            <label>Preset</label>
+            <div class="grid2">
+              <select id="prompt_lang"><option value="">— language —</option></select>
+              <select id="prompt_voice"><option value="">— voice —</option></select>
+            </div>
+            <div style="margin-top:8px;">
+              <select id="prompt_file"><option value="">— file —</option></select>
+            </div>
+            <audio id="prompt_preview" controls preload="none"></audio>
+          </div>
+          <div class="col">
+            <label>Or upload audio (.wav / .mp3 / .flac)</label>
+            <input type="file" id="prompt_upload" accept=".wav,.mp3,.flac,.ogg,.m4a,audio/*" />
+            <div class="field" style="margin-top:8px;">
+              <label>Prompt transcript (text spoken in the prompt audio)</label>
+              <textarea id="prompt_text" placeholder="What is being said in the prompt audio..."></textarea>
+            </div>
+          </div>
+        </div>
+      </fieldset>
+    </div>
+
+    <div id="ref-block">
+      <fieldset>
+        <legend>Reference audio (style / expression, optional)</legend>
+        <div class="row">
+          <div class="col">
+            <label>Preset</label>
+            <div class="grid2">
+              <select id="ref_lang"><option value="">— language —</option></select>
+              <select id="ref_voice"><option value="">— voice —</option></select>
+            </div>
+            <div style="margin-top:8px;">
+              <select id="ref_file"><option value="">— file —</option></select>
+            </div>
+            <audio id="ref_preview" controls preload="none"></audio>
+          </div>
+          <div class="col">
+            <label>Or upload reference audio</label>
+            <input type="file" id="ref_upload" accept=".wav,.mp3,.flac,.ogg,.m4a,audio/*" />
+          </div>
+        </div>
+      </fieldset>
+    </div>
+
+    <details open>
+      <summary>Hyperparameters</summary>
+      <div class="row" style="margin-top:10px;">
+        <div class="col">
+          <label>cfg_value <span class="pill">classifier-free guidance</span></label>
+          <div class="range-row">
+            <input type="range" id="cfg_value" min="0" max="6" step="0.1" value="2.0" />
+            <span id="cfg_value_v">2.0</span>
+          </div>
+        </div>
+        <div class="col">
+          <label>temperature</label>
+          <div class="range-row">
+            <input type="range" id="temperature" min="0" max="2" step="0.05" value="1.0" />
+            <span id="temperature_v">1.00</span>
+          </div>
+        </div>
+        <div class="col">
+          <label>max_generate_length</label>
+          <input type="number" id="max_generate_length" value="2000" min="1" max="8000" />
+        </div>
+        <div class="col">
+          <label>LoRA name (optional)</label>
+          <input type="text" id="lora_name" placeholder="(none)" />
+        </div>
+      </div>
+    </details>
+
+    <div style="margin-top:14px; display:flex; gap:10px; align-items:center;">
+      <button class="primary" id="generate_btn">Generate</button>
+      <button class="ghost" id="stop_btn" disabled>Stop</button>
+      <span class="ttfb" id="ttfb"></span>
+    </div>
+    <div class="status" id="status"></div>
+    <audio id="player" controls></audio>
+    <div style="margin-top:6px;">
+      <a id="download" style="display:none; color: var(--accent);" download="voxcpm2.mp3">Download MP3</a>
+    </div>
+  </div>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const MODE_DESC = {
+  ultimate: "Ultimate cloning: faithfully reproduces a target speaker. Provide a voice prompt audio + its transcript.",
+  controllable: "Controllable cloning: clones a speaker (voice prompt) AND borrows expression/style from a separate reference audio.",
+  design: "Voice design: zero-shot synthesis — no prompt, the model designs a voice from the target text alone.",
+};
+let currentMode = "ultimate";
+
+function setMode(mode) {
+  currentMode = mode;
+  document.querySelectorAll(".tab").forEach(t => t.classList.toggle("active", t.dataset.mode === mode));
+  $("mode-desc").textContent = MODE_DESC[mode];
+  $("prompt-block").style.display = (mode === "design") ? "none" : "";
+  $("ref-block").style.display = (mode === "controllable") ? "" : "none";
+}
+document.querySelectorAll(".tab").forEach(t => t.addEventListener("click", () => setMode(t.dataset.mode)));
+setMode("ultimate");
+
+["cfg_value","temperature"].forEach(id => {
+  const el = $(id), out = $(id + "_v");
+  const fmt = (v) => id === "temperature" ? Number(v).toFixed(2) : Number(v).toFixed(1);
+  el.addEventListener("input", () => out.textContent = fmt(el.value));
+  out.textContent = fmt(el.value);
+});
+
+let presetsData = null;
+async function loadPresets() {
+  try {
+    const r = await fetch("/voices");
+    presetsData = await r.json();
+    fillLang($("prompt_lang"));
+    fillLang($("ref_lang"));
+  } catch (e) { console.warn(e); }
+}
+function fillLang(sel) {
+  if (!presetsData) return;
+  sel.innerHTML = '<option value="">— language —</option>' +
+    presetsData.languages.map(l => `<option value="${l.language}">${l.language}</option>`).join("");
+}
+function fillVoice(langSel, voiceSel, fileSel, previewEl) {
+  voiceSel.innerHTML = '<option value="">— voice —</option>';
+  fileSel.innerHTML = '<option value="">— file —</option>';
+  previewEl.removeAttribute("src");
+  const lang = presetsData?.languages.find(l => l.language === langSel.value);
+  if (!lang) return;
+  voiceSel.innerHTML += lang.voices.map(v => `<option value="${v.name}">${v.name}</option>`).join("");
+}
+function fillFile(langSel, voiceSel, fileSel, previewEl) {
+  fileSel.innerHTML = '<option value="">— file —</option>';
+  previewEl.removeAttribute("src");
+  const lang = presetsData?.languages.find(l => l.language === langSel.value);
+  const voice = lang?.voices.find(v => v.name === voiceSel.value);
+  if (!voice) return;
+  const all = [...voice.files, ...voice.expressions.map(e => ({...e, name: "expr/" + e.name}))];
+  fileSel.innerHTML += all.map(f => `<option value="${f.path}" data-fmt="${f.format}">${f.name} (${f.format})</option>`).join("");
+}
+function bindPresetSelectors(prefix) {
+  const lang = $(prefix + "_lang"), voice = $(prefix + "_voice"), file = $(prefix + "_file"), prev = $(prefix + "_preview");
+  lang.addEventListener("change", () => fillVoice(lang, voice, file, prev));
+  voice.addEventListener("change", () => fillFile(lang, voice, file, prev));
+  file.addEventListener("change", () => {
+    if (file.value) prev.src = "/voices/file?path=" + encodeURIComponent(file.value);
+    else prev.removeAttribute("src");
+  });
+}
+bindPresetSelectors("prompt");
+bindPresetSelectors("ref");
+
+async function fileToBase64(file) {
+  const buf = await file.arrayBuffer();
+  let s = ""; const bytes = new Uint8Array(buf);
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) s += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
+  return btoa(s);
+}
+function fileFormatOf(file) {
+  const n = file.name.toLowerCase();
+  const ext = n.includes(".") ? n.split(".").pop() : "wav";
+  return ext;
+}
+
+async function buildPayload() {
+  const target_text = $("target_text").value.trim();
+  if (!target_text) throw new Error("target_text is required");
+  const body = {
+    target_text,
+    cfg_value: parseFloat($("cfg_value").value),
+    temperature: parseFloat($("temperature").value),
+    max_generate_length: parseInt($("max_generate_length").value || "2000", 10),
+  };
+  const lora = $("lora_name").value.trim();
+  if (lora) body.lora_name = lora;
+
+  if (currentMode !== "design") {
+    const prompt_text = $("prompt_text").value.trim();
+    if (!prompt_text) throw new Error("prompt transcript is required for cloning modes");
+    body.prompt_text = prompt_text;
+
+    const up = $("prompt_upload").files[0];
+    const presetPath = $("prompt_file").value;
+    if (up) {
+      body.prompt_wav_base64 = await fileToBase64(up);
+      body.prompt_wav_format = fileFormatOf(up);
+    } else if (presetPath) {
+      body.prompt_preset = presetPath;
+    } else {
+      throw new Error("provide a preset or upload a voice prompt audio");
+    }
+  }
+
+  if (currentMode === "controllable") {
+    const up = $("ref_upload").files[0];
+    const presetPath = $("ref_file").value;
+    if (up) {
+      body.ref_audio_wav_base64 = await fileToBase64(up);
+      body.ref_audio_wav_format = fileFormatOf(up);
+    } else if (presetPath) {
+      body.ref_audio_preset = presetPath;
+    } else {
+      throw new Error("controllable mode requires a reference audio (preset or upload)");
+    }
+  }
+  return body;
+}
+
+let currentAbort = null;
+async function generate() {
+  $("status").classList.remove("err");
+  $("status").textContent = "";
+  $("ttfb").textContent = "";
+  $("download").style.display = "none";
+
+  let payload;
+  try { payload = await buildPayload(); }
+  catch (e) { return setErr(e.message); }
+
+  $("generate_btn").disabled = true;
+  $("stop_btn").disabled = false;
+  currentAbort = new AbortController();
+
+  const start = performance.now();
+  let firstByte = null;
+  const chunks = [];
+
+  try {
+    const resp = await fetch("/generate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Accept": "audio/mpeg" },
+      body: JSON.stringify(payload),
+      signal: currentAbort.signal,
+    });
+    if (!resp.ok) {
+      const t = await resp.text();
+      throw new Error("HTTP " + resp.status + ": " + t);
+    }
+    setStatus("Streaming…");
+
+    const reader = resp.body.getReader();
+    const player = $("player");
+
+    // Use MediaSource for low-latency progressive MP3 playback.
+    const supportsMSE = typeof MediaSource !== "undefined" && MediaSource.isTypeSupported("audio/mpeg");
+
+    if (supportsMSE) {
+      const ms = new MediaSource();
+      player.src = URL.createObjectURL(ms);
+      let sb;
+      const queue = [];
+      let ended = false;
+      let started = false;
+
+      const flush = () => {
+        if (!sb || sb.updating) return;
+        if (queue.length > 0) {
+          sb.appendBuffer(queue.shift());
+        } else if (ended) {
+          try { ms.endOfStream(); } catch {}
+        }
+      };
+
+      await new Promise((resolve) => ms.addEventListener("sourceopen", resolve, { once: true }));
+      sb = ms.addSourceBuffer("audio/mpeg");
+      sb.mode = "sequence";
+      sb.addEventListener("updateend", flush);
+
+      (async () => {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) { ended = true; flush(); break; }
+          if (firstByte === null) {
+            firstByte = performance.now() - start;
+            $("ttfb").textContent = `TTFB: ${firstByte.toFixed(0)} ms`;
+            setStatus(`Playing… (first byte ${firstByte.toFixed(0)} ms)`);
+          }
+          chunks.push(value);
+          queue.push(value);
+          flush();
+          if (!started) {
+            started = true;
+            try { await player.play(); } catch {}
+          }
+        }
+      })().catch((e) => setErr(String(e)));
+    } else {
+      // Fallback: buffer fully, then play.
+      setStatus("MSE unsupported, buffering full response…");
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (firstByte === null) {
+          firstByte = performance.now() - start;
+          $("ttfb").textContent = `TTFB: ${firstByte.toFixed(0)} ms`;
+        }
+        chunks.push(value);
+      }
+      const blob = new Blob(chunks, { type: "audio/mpeg" });
+      player.src = URL.createObjectURL(blob);
+      await player.play();
+    }
+
+    // Wait until reader finishes (chunks fully collected) before download link.
+    // Watch the player for end to finalize.
+    const onEnded = () => {
+      const blob = new Blob(chunks, { type: "audio/mpeg" });
+      const a = $("download");
+      a.href = URL.createObjectURL(blob);
+      a.style.display = "inline-block";
+      setStatus("Done. " + chunks.reduce((n,c) => n + c.byteLength, 0) + " bytes received.");
+      player.removeEventListener("ended", onEnded);
+    };
+    player.addEventListener("ended", onEnded);
+    // Also offer download as soon as stream finishes, even if user paused.
+    setTimeout(() => {
+      if ($("download").style.display === "none") {
+        const blob = new Blob(chunks, { type: "audio/mpeg" });
+        const a = $("download");
+        a.href = URL.createObjectURL(blob);
+        a.style.display = "inline-block";
+      }
+    }, 200);
+  } catch (e) {
+    if (e.name === "AbortError") setStatus("Cancelled.");
+    else setErr(e.message || String(e));
+  } finally {
+    $("generate_btn").disabled = false;
+    $("stop_btn").disabled = true;
+    currentAbort = null;
+  }
+}
+function setStatus(s) { $("status").classList.remove("err"); $("status").textContent = s; }
+function setErr(s) { $("status").classList.add("err"); $("status").textContent = s; $("generate_btn").disabled = false; $("stop_btn").disabled = true; }
+
+$("generate_btn").addEventListener("click", generate);
+$("stop_btn").addEventListener("click", () => currentAbort?.abort());
+
+(async () => {
+  try {
+    const r = await fetch("/info");
+    const j = await r.json();
+    $("model-info").textContent = `sr=${j.model.sample_rate} • ${j.model.model_path}`;
+  } catch { $("model-info").textContent = "info unavailable"; }
+  await loadPresets();
+})();
+</script>
+</body>
+</html>

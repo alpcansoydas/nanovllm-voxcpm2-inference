@@ -70,9 +70,29 @@ cd nanovllm-voxcpm-main
 docker build -f deployment/Dockerfile -t nanovllm-voxcpm2:latest .
 ```
 
-### Docker build memory / time tuning
+### Fast Docker build (no from-source compile)
 
-`flash-attn` is compiled from source during the image build. Each `nvcc` job peaks at ~6–8 GB RSS and compiles once per CUDA arch in `TORCH_CUDA_ARCH_LIST`. On small EC2 instances the unbounded parallel build will exhaust RAM and appear to hang (the `DEBUG` deprecation lines from CUDA 13 are noise, not a leak).
+`pyproject.toml` now pins:
+
+- `torch==2.7.1` + `torchaudio==2.7.1` from PyTorch's **cu126** wheel index
+- `flash-attn==2.8.3` from its **GitHub release prebuilt wheel** (matches torch 2.7 + cu12 + cp310 + cxx11abi=FALSE)
+
+The Dockerfile base is `nvidia/cuda:12.6.3-runtime-ubuntu22.04` (matches the cu126 wheels; no `devel` toolchain needed since nothing compiles).
+
+Result: a fresh `docker build` is **~3-5 minutes** — just wheel downloads, zero nvcc. Works on `g6.xlarge` (16 GB) without swap.
+
+```bash
+cd nanovllm-voxcpm-main
+docker build -f deployment/Dockerfile -t nanovllm-voxcpm2:latest .
+```
+
+**Host driver requirement:** `nvidia-smi` ≥ **525** (cu12 wheels). AWS DLAMI and `ubuntu` 22.04 AMIs with the recommended NVIDIA driver are fine.
+
+If you ever need to change torch / flash-attn versions, regenerate the matching wheel URL from `https://github.com/Dao-AILab/flash-attention/releases` — the filename is deterministic from torch version + cuda series + python version + cxx11abi flag.
+
+### Legacy: from-source flash-attn build (only if you can't use the prebuilt wheel)
+
+If you must build from source (e.g. an arch the prebuilt wheel doesn't support), remove the `flash-attn` entry from `[tool.uv.sources]` in `pyproject.toml` and switch the base back to `nvidia/cuda:13.0.1-devel-ubuntu22.04`. Then:
 
 The Dockerfile exposes these build args; defaults are conservative (`MAX_JOBS=2`, `NVCC_THREADS=1`) and target ~16 GB RAM hosts:
 
@@ -137,6 +157,32 @@ Persist across reboots:
 ```bash
 echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
 ```
+
+### Making rebuilds fast
+
+The Dockerfile uses BuildKit cache mounts for `~/.cache/uv` and `~/.cache/pip`, so flash-attn's expensive compile is reused across builds as long as its inputs (torch / cuda / arch list) don't change. BuildKit is on by default in modern Docker; if you've disabled it, re-enable:
+
+```bash
+export DOCKER_BUILDKIT=1
+```
+
+The **first** build on a host still pays the full compile cost — that's unavoidable. After that:
+
+1. **Save the image after the first successful build** so you never rebuild on this host:
+   ```bash
+   docker save nanovllm-voxcpm2:latest | gzip > nanovllm-voxcpm2.tar.gz
+   # Restore elsewhere:
+   gunzip -c nanovllm-voxcpm2.tar.gz | docker load
+   ```
+   Or push to ECR / Docker Hub — recommended for k8s.
+
+2. **Resize for the build, then shrink back.** flash-attn compile time is roughly inversely proportional to `MAX_JOBS`. On a 16 GB host you're stuck with `MAX_JOBS=1` (~45-75 min). Stopping the EC2, changing to `g6.2xlarge` (8 vCPU / 32 GB, ~$1/hr) just for the build, then resizing back, costs ~$0.50 and cuts the build to ~12-15 min:
+   ```bash
+   docker build -f deployment/Dockerfile \
+     --build-arg TORCH_CUDA_ARCH_LIST="8.9" \
+     --build-arg MAX_JOBS=4 \
+     -t nanovllm-voxcpm2:latest .
+   ```
 
 ### If a previous build froze / OOM'd the instance
 

@@ -1,4 +1,5 @@
-ARG CUDA_IMAGE=nvidia/cuda:13.0.1-devel-ubuntu22.04
+# syntax=docker/dockerfile:1.6
+ARG CUDA_IMAGE=nvidia/cuda:12.6.3-runtime-ubuntu22.04
 ARG TORCH_CUDA_ARCH_LIST="8.0;8.6;8.9;9.0"
 
 FROM ${CUDA_IMAGE}
@@ -46,7 +47,15 @@ USER appuser
 COPY --chown=appuser:appuser . .
 
 # Install workspace packages from the frozen lockfile.
-RUN uv sync --all-packages --no-dev -v --compile-bytecode --no-cache --no-editable
+# BuildKit cache mounts persist the uv download/build cache and pip's wheel cache
+# across builds, so flash-attn (the ~45-60 min compile) is reused if its inputs
+# haven't changed. Enable BuildKit: `DOCKER_BUILDKIT=1 docker build ...` (default
+# on modern Docker).
+RUN --mount=type=cache,target=/home/appuser/.cache/uv,uid=10001,gid=10001 \
+    --mount=type=cache,target=/home/appuser/.cache/pip,uid=10001,gid=10001 \
+    --mount=type=cache,target=/tmp/uv-build,uid=10001,gid=10001 \
+    UV_CACHE_DIR=/home/appuser/.cache/uv \
+    uv sync --all-packages --no-dev -v --compile-bytecode --no-editable
 
 EXPOSE 8000
 

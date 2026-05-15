@@ -11,19 +11,32 @@ readme = "README.md"
 description = "VoxCPM inference engine based on Nano-vLLM"
 requires-python = ">=3.10,<3.13"
 dependencies = [
-    "torch>=2.5.0,!=2.6.*",
+    "torch==2.7.1",
     "triton>=3.0.0",
     "transformers>=4.51.0",
     "xxhash",
-    "torchaudio",
+    "torchaudio==2.7.1",
     "tqdm",
     "numpy",
     "librosa",
     "pydantic",
-    "flash-attn",
+    "flash-attn==2.8.3",
     "soundfile>=0.13.1",
     "torchcodec",
 ]
+
+# Pin torch family to cu126 prebuilt wheels and flash-attn to its matching
+# GitHub release wheel. This skips the from-source flash-attn compile entirely
+# (which takes 30-90+ min on small EC2 instances).
+[tool.uv.sources]
+torch = { index = "pytorch-cu126" }
+torchaudio = { index = "pytorch-cu126" }
+flash-attn = { url = "https://github.com/Dao-AILab/flash-attention/releases/download/v2.8.3/flash_attn-2.8.3+cu12torch2.7cxx11abiFALSE-cp310-cp310-linux_x86_64.whl" }
+
+[[tool.uv.index]]
+name = "pytorch-cu126"
+url = "https://download.pytorch.org/whl/cu126"
+explicit = true
 
 [project.urls]
 Homepage="https://github.com/a710128/nanovllm-voxcpm"

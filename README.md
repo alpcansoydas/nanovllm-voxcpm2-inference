@@ -32,6 +32,21 @@ nanovllm-voxcpm2-inference/
 - **Streaming output playback.** As soon as the first MP3 byte arrives, the browser starts playing via MediaSource. A "TTFB: NN ms" indicator is shown.
 - **MP3 download** of the full generated stream once it completes.
 
+## Supported GPUs
+
+The engine depends on **flash-attn v2** (`flash_attn_varlen_func`, `flash_attn_with_kvcache`, `flash_attn_func`) and there is no SDPA / xformers fallback. flash-attn v2 requires NVIDIA **Ampere or newer** (compute capability ≥ 8.0).
+
+| GPU | Compute capability | Supported |
+| --- | --- | --- |
+| T4 (Turing, sm_75) | 7.5 | **No** — flash-attn won't compile or run |
+| V100 (Volta, sm_70) | 7.0 | **No** |
+| A10 / A10G / RTX 30-series | 8.6 | Yes |
+| A100 | 8.0 | Yes |
+| L4 / L40 / RTX 40-series | 8.9 | Yes |
+| H100 / H200 | 9.0 | Yes |
+
+On AWS, the cheapest supported instance is `g5.xlarge` (A10G, 24 GB VRAM).
+
 ## Build
 
 This repo uses [`uv`](https://docs.astral.sh/uv/) and the deployment service is a uv workspace member.
@@ -48,12 +63,67 @@ cd nanovllm-voxcpm-main
 uv sync --package nano-vllm-voxcpm-deployment --frozen
 ```
 
-Docker (multi-stage CUDA image):
+Docker (CUDA 13 base image):
 
 ```bash
 cd nanovllm-voxcpm-main
 docker build -f deployment/Dockerfile -t nanovllm-voxcpm2:latest .
 ```
+
+### Docker build memory / time tuning
+
+`flash-attn` is compiled from source during the image build. Each `nvcc` job peaks at ~6–8 GB RSS and compiles once per CUDA arch in `TORCH_CUDA_ARCH_LIST`. On small EC2 instances the unbounded parallel build will exhaust RAM and appear to hang (the `DEBUG` deprecation lines from CUDA 13 are noise, not a leak).
+
+The Dockerfile exposes these build args; defaults are conservative (`MAX_JOBS=2`, `NVCC_THREADS=1`) and target ~16 GB RAM hosts:
+
+| Build arg | Default | Notes |
+| --- | --- | --- |
+| `CUDA_IMAGE` | `nvidia/cuda:13.0.1-devel-ubuntu22.04` | Must match the cu130 PyTorch wheel that uv resolves. Host driver ≥ 580 required. |
+| `TORCH_CUDA_ARCH_LIST` | `8.0;8.6;8.9;9.0` | One arch per target GPU. Trimming this is the single biggest speedup. |
+| `MAX_JOBS` | `2` | Parallel compile jobs. |
+| `NVCC_THREADS` | `1` | Threads per `nvcc` invocation. |
+
+Pick the arch for your GPU:
+
+| GPU | `TORCH_CUDA_ARCH_LIST` |
+| --- | --- |
+| A100 | `8.0` |
+| A10 / A10G | `8.6` |
+| L4 / L40 / RTX 40-series | `8.9` |
+| H100 / H200 | `9.0` |
+
+Examples:
+
+```bash
+# A10G with 8 vCPU / 32 GB
+docker build -f deployment/Dockerfile \
+  --build-arg TORCH_CUDA_ARCH_LIST="8.6" \
+  --build-arg MAX_JOBS=4 \
+  -t nanovllm-voxcpm2:latest .
+
+# Tight 16 GB host
+docker build -f deployment/Dockerfile \
+  --build-arg TORCH_CUDA_ARCH_LIST="8.6" \
+  --build-arg MAX_JOBS=2 \
+  -t nanovllm-voxcpm2:latest .
+
+# < 16 GB RAM (slow but won't OOM)
+docker build -f deployment/Dockerfile \
+  --build-arg TORCH_CUDA_ARCH_LIST="8.6" \
+  --build-arg MAX_JOBS=1 \
+  -t nanovllm-voxcpm2:latest .
+```
+
+Free disk requirement during the build: ~20–25 GB. Verify with `free -h` and `df -h /var/lib/docker` before building.
+
+If the host driver is too old for CUDA 13 (`nvidia-smi` reports < 580), override to a CUDA 12.6 base **and** pin torch to cu126 wheels — or use:
+
+```bash
+docker build -f deployment/Dockerfile \
+  --build-arg CUDA_IMAGE=nvidia/cuda:12.6.3-devel-ubuntu22.04 \
+  -t nanovllm-voxcpm2:latest .
+```
+(only works if the resolved PyTorch wheel is cu126; otherwise the original mismatch returns).
 
 ## Configure
 

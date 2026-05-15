@@ -49,21 +49,30 @@ On AWS, the cheapest supported instance is `g5.xlarge` (A10G, 24 GB VRAM).
 
 ## Build
 
-This repo uses [`uv`](https://docs.astral.sh/uv/) and the deployment service is a uv workspace member.
+The repo ships a [`requirements.txt`](nanovllm-voxcpm-main/requirements.txt) at `nanovllm-voxcpm-main/`. It pins `torch==2.7.1` (cu126), a prebuilt `flash-attn==2.8.3` wheel, and all FastAPI service deps. Plain `pip install` works — no source compile.
 
 ```bash
 cd nanovllm-voxcpm-main
-uv sync --all-packages --frozen
+
+# (recommended) work in a virtualenv
+python3.10 -m venv .venv
+source .venv/bin/activate
+
+# Production install
+pip install --upgrade pip
+pip install -r requirements.txt
+pip install --no-deps .              # installs the nano-vllm-voxcpm engine package
 ```
 
-Or sync just the deployment service:
+Add `pip install -e ./deployment` (or just keep the source tree on `PYTHONPATH`) if you want to import the FastAPI service modules outside of running `fastapi run`.
+
+Dev tools (linters / tests):
 
 ```bash
-cd nanovllm-voxcpm-main
-uv sync --package nano-vllm-voxcpm-deployment --frozen
+pip install -r requirements-dev.txt
 ```
 
-Docker (CUDA 13 base image):
+Docker (CUDA 12.6 runtime base — no compile, ~3-5 min build):
 
 ```bash
 cd nanovllm-voxcpm-main
@@ -90,122 +99,26 @@ docker build -f deployment/Dockerfile -t nanovllm-voxcpm2:latest .
 
 If you ever need to change torch / flash-attn versions, regenerate the matching wheel URL from `https://github.com/Dao-AILab/flash-attention/releases` — the filename is deterministic from torch version + cuda series + python version + cxx11abi flag.
 
-### Legacy: from-source flash-attn build (only if you can't use the prebuilt wheel)
+### Image size & caveats
 
-If you must build from source (e.g. an arch the prebuilt wheel doesn't support), remove the `flash-attn` entry from `[tool.uv.sources]` in `pyproject.toml` and switch the base back to `nvidia/cuda:13.0.1-devel-ubuntu22.04`. Then:
+- Disk: ~10-12 GB for the final image (torch + cuda runtime libs).
+- Build disk: ~15 GB free in `/var/lib/docker`. Check with `df -h /var/lib/docker`.
+- The `requirements.txt` layer is cached on rebuilds, so only changes to that file (or earlier layers) trigger a full re-install.
 
-The Dockerfile exposes these build args; defaults are conservative (`MAX_JOBS=2`, `NVCC_THREADS=1`) and target ~16 GB RAM hosts:
+### Updating torch / flash-attn
 
-| Build arg | Default | Notes |
-| --- | --- | --- |
-| `CUDA_IMAGE` | `nvidia/cuda:13.0.1-devel-ubuntu22.04` | Must match the cu130 PyTorch wheel that uv resolves. Host driver ≥ 580 required. |
-| `TORCH_CUDA_ARCH_LIST` | `8.0;8.6;8.9;9.0` | One arch per target GPU. Trimming this is the single biggest speedup. |
-| `MAX_JOBS` | `2` | Parallel compile jobs. |
-| `NVCC_THREADS` | `1` | Threads per `nvcc` invocation. |
+If you bump `torch` in `requirements.txt`, you must also swap the flash-attn URL to a matching wheel. The filename pattern is:
 
-Pick the arch for your GPU:
-
-| GPU | `TORCH_CUDA_ARCH_LIST` |
-| --- | --- |
-| A100 | `8.0` |
-| A10 / A10G | `8.6` |
-| L4 / L40 / RTX 40-series | `8.9` |
-| H100 / H200 | `9.0` |
-
-Examples:
-
-```bash
-# A10G (g5.xlarge / g5.2xlarge, sm_86), 8 vCPU / 32 GB
-docker build -f deployment/Dockerfile \
-  --build-arg TORCH_CUDA_ARCH_LIST="8.6" \
-  --build-arg MAX_JOBS=4 \
-  -t nanovllm-voxcpm2:latest .
-
-# A10G on a tight 16 GB host
-docker build -f deployment/Dockerfile \
-  --build-arg TORCH_CUDA_ARCH_LIST="8.6" \
-  --build-arg MAX_JOBS=2 \
-  -t nanovllm-voxcpm2:latest .
-
-# L4 (g6.xlarge, sm_89), 16 GB RAM — USE THIS, plain build will OOM
-docker build -f deployment/Dockerfile \
-  --build-arg TORCH_CUDA_ARCH_LIST="8.9" \
-  --build-arg MAX_JOBS=1 \
-  -t nanovllm-voxcpm2:latest .
-
-# L4 on g6.2xlarge (32 GB), faster
-docker build -f deployment/Dockerfile \
-  --build-arg TORCH_CUDA_ARCH_LIST="8.9" \
-  --build-arg MAX_JOBS=2 \
-  -t nanovllm-voxcpm2:latest .
+```
+flash_attn-<flashver>+cu<series>torch<torchver>cxx11abi<TRUE|FALSE>-cp<py>-cp<py>-linux_x86_64.whl
 ```
 
-### Add swap before building on small hosts (≤ 16 GB RAM)
-
-A single nvcc job for flash-attn can spike past 8 GB; on a 16 GB EC2 the kernel will OOM-kill the build (or the whole instance) without swap. Run **once on the host** before `docker build`:
+List available wheels:
 
 ```bash
-sudo fallocate -l 16G /swapfile
-sudo chmod 600 /swapfile
-sudo mkswap /swapfile
-sudo swapon /swapfile
-free -h   # confirm Swap line is non-zero
+curl -s https://api.github.com/repos/Dao-AILab/flash-attention/releases/tags/v2.8.3 \
+  | grep browser_download_url
 ```
-
-Persist across reboots:
-
-```bash
-echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
-```
-
-### Making rebuilds fast
-
-The Dockerfile uses BuildKit cache mounts for `~/.cache/uv` and `~/.cache/pip`, so flash-attn's expensive compile is reused across builds as long as its inputs (torch / cuda / arch list) don't change. BuildKit is on by default in modern Docker; if you've disabled it, re-enable:
-
-```bash
-export DOCKER_BUILDKIT=1
-```
-
-The **first** build on a host still pays the full compile cost — that's unavoidable. After that:
-
-1. **Save the image after the first successful build** so you never rebuild on this host:
-   ```bash
-   docker save nanovllm-voxcpm2:latest | gzip > nanovllm-voxcpm2.tar.gz
-   # Restore elsewhere:
-   gunzip -c nanovllm-voxcpm2.tar.gz | docker load
-   ```
-   Or push to ECR / Docker Hub — recommended for k8s.
-
-2. **Resize for the build, then shrink back.** flash-attn compile time is roughly inversely proportional to `MAX_JOBS`. On a 16 GB host you're stuck with `MAX_JOBS=1` (~45-75 min). Stopping the EC2, changing to `g6.2xlarge` (8 vCPU / 32 GB, ~$1/hr) just for the build, then resizing back, costs ~$0.50 and cuts the build to ~12-15 min:
-   ```bash
-   docker build -f deployment/Dockerfile \
-     --build-arg TORCH_CUDA_ARCH_LIST="8.9" \
-     --build-arg MAX_JOBS=4 \
-     -t nanovllm-voxcpm2:latest .
-   ```
-
-### If a previous build froze / OOM'd the instance
-
-After rebooting, clean up wedged Docker state before retrying:
-
-```bash
-sudo systemctl restart docker
-docker builder prune -af
-df -h /var/lib/docker   # need ≥ 25 GB free
-```
-
-Then rerun the appropriate `docker build` command above for your GPU.
-
-Free disk requirement during the build: ~20–25 GB. Verify with `free -h` and `df -h /var/lib/docker` before building.
-
-If the host driver is too old for CUDA 13 (`nvidia-smi` reports < 580), override to a CUDA 12.6 base **and** pin torch to cu126 wheels — or use:
-
-```bash
-docker build -f deployment/Dockerfile \
-  --build-arg CUDA_IMAGE=nvidia/cuda:12.6.3-devel-ubuntu22.04 \
-  -t nanovllm-voxcpm2:latest .
-```
-(only works if the resolved PyTorch wheel is cu126; otherwise the original mismatch returns).
 
 ## Configure
 
@@ -222,22 +135,24 @@ Key environment variables (full list in `nanovllm-voxcpm-main/deployment/README.
 
 ## Run
 
-From the `nanovllm-voxcpm-main/` directory:
+From the `nanovllm-voxcpm-main/` directory (with the venv activated):
 
 ```bash
-# Make sure the preset library is on disk
+# Preset library
 export VOICE_PRESETS_DIR="$(cd .. && pwd)/voice_presets"
 
-# Point at your VoxCPM2 checkpoint
+# VoxCPM2 checkpoint
 export NANOVLLM_MODEL_PATH=/path/to/VoxCPM2
 
-uv run fastapi run deployment/app/main.py --host 0.0.0.0 --port 8000
+# Run the service (PYTHONPATH so `app.*` imports work without installing deployment)
+PYTHONPATH=deployment fastapi run deployment/app/main.py --host 0.0.0.0 --port 8000
 ```
 
 Equivalent uvicorn invocation (matches the container entrypoint):
 
 ```bash
-uv run uvicorn app.main:app --host 0.0.0.0 --port 8000
+cd deployment
+PYTHONPATH=. uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
 
 Docker:

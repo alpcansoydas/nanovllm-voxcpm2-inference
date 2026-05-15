@@ -127,7 +127,14 @@ def _default_voice_presets_dir() -> str:
 
 
 def load_config() -> ServiceConfig:
-    model_path = os.path.expanduser(os.environ.get("NANOVLLM_MODEL_PATH", "~/VoxCPM1.5"))
+    raw_model_path = os.environ.get("NANOVLLM_MODEL_PATH", "openbmb/VoxCPM2")
+    # Treat values that look like local paths ("/...", "~/...", "./...") as filesystem paths;
+    # otherwise pass through verbatim so the engine can resolve it as a HuggingFace repo id
+    # via snapshot_download.
+    if raw_model_path.startswith(("/", "~", "./", "../")):
+        model_path = os.path.expanduser(raw_model_path)
+    else:
+        model_path = raw_model_path
     voice_presets_dir = os.path.abspath(
         os.path.expanduser(os.environ.get("VOICE_PRESETS_DIR", _default_voice_presets_dir()))
     )

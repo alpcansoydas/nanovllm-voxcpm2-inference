@@ -126,7 +126,7 @@ Key environment variables (full list in `nanovllm-voxcpm-main/deployment/README.
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `NANOVLLM_MODEL_PATH` | `~/VoxCPM1.5` | Path to the VoxCPM2 checkpoint. Set to your VoxCPM2 weights dir (or use `openbmb/VoxCPM2` after downloading). |
+| `NANOVLLM_MODEL_PATH` | `openbmb/VoxCPM2` | Either a HuggingFace repo id (auto-downloaded on first run) or a local path (must start with `/`, `~`, `./`, or `../`). |
 | `VOICE_PRESETS_DIR` | repo's `voice_presets/` | Root directory for preset voices served at `/voices`. |
 | `NANOVLLM_SERVERPOOL_DEVICES` | `0` | Comma-separated GPU ids. |
 | `NANOVLLM_SERVERPOOL_GPU_MEMORY_UTILIZATION` | `0.95` | KV-cache memory ratio. |
@@ -155,14 +155,37 @@ cd deployment
 PYTHONPATH=. uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
 
-Docker:
+Docker (model auto-downloads from HuggingFace on first run):
+
+```bash
+docker run --rm --gpus all -p 8000:8000 \
+  -e VOICE_PRESETS_DIR=/voice_presets \
+  -v "$(pwd)/../voice_presets":/voice_presets \
+  -v hf-cache:/var/cache/huggingface \
+  nanovllm-voxcpm2:latest
+```
+
+`NANOVLLM_MODEL_PATH` defaults to `openbmb/VoxCPM2`, so on first run the container fetches the weights to the named volume `hf-cache` (kept across `docker run` invocations). Subsequent runs reuse the cache.
+
+If the model is gated, pass your HF token so the download succeeds:
+
+```bash
+docker run --rm --gpus all -p 8000:8000 \
+  -e HF_TOKEN="$HF_TOKEN" \
+  -e VOICE_PRESETS_DIR=/voice_presets \
+  -v "$(pwd)/../voice_presets":/voice_presets \
+  -v hf-cache:/var/cache/huggingface \
+  nanovllm-voxcpm2:latest
+```
+
+To use a **local** checkpoint instead (skip the download), point `NANOVLLM_MODEL_PATH` at a directory and mount it:
 
 ```bash
 docker run --rm --gpus all -p 8000:8000 \
   -e NANOVLLM_MODEL_PATH=/models/VoxCPM2 \
   -e VOICE_PRESETS_DIR=/voice_presets \
-  -v /path/to/VoxCPM2:/models/VoxCPM2 \
-  -v "$(pwd)/voice_presets":/voice_presets \
+  -v ~/models/VoxCPM2:/models/VoxCPM2 \
+  -v "$(pwd)/../voice_presets":/voice_presets \
   nanovllm-voxcpm2:latest
 ```
 

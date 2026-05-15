@@ -24,10 +24,12 @@ RUN apt-get update \
   && ln -sf /usr/bin/python3 /usr/local/bin/python \
   && python -m pip install --upgrade pip
 
-ENV NANOVLLM_CACHE_DIR=/var/cache/nanovllm
+ENV NANOVLLM_CACHE_DIR=/var/cache/nanovllm \
+    HF_HOME=/var/cache/huggingface \
+    HUGGINGFACE_HUB_CACHE=/var/cache/huggingface/hub
 RUN useradd -m -u 10001 appuser \
- && mkdir -p "$NANOVLLM_CACHE_DIR" \
- && chown -R appuser:appuser "$NANOVLLM_CACHE_DIR" \
+ && mkdir -p "$NANOVLLM_CACHE_DIR" "$HF_HOME" "$HUGGINGFACE_HUB_CACHE" \
+ && chown -R appuser:appuser "$NANOVLLM_CACHE_DIR" "$HF_HOME" \
  && chown -R appuser:appuser /app
 
 USER appuser

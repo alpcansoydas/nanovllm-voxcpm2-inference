@@ -1,4 +1,4 @@
-ARG CUDA_IMAGE=nvidia/cuda:12.6.3-devel-ubuntu22.04
+ARG CUDA_IMAGE=nvidia/cuda:13.0.1-devel-ubuntu22.04
 ARG TORCH_CUDA_ARCH_LIST="8.0;8.6;8.9;9.0"
 
 FROM ${CUDA_IMAGE}

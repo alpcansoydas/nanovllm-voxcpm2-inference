@@ -95,24 +95,60 @@ Pick the arch for your GPU:
 Examples:
 
 ```bash
-# A10G with 8 vCPU / 32 GB
+# A10G (g5.xlarge / g5.2xlarge, sm_86), 8 vCPU / 32 GB
 docker build -f deployment/Dockerfile \
   --build-arg TORCH_CUDA_ARCH_LIST="8.6" \
   --build-arg MAX_JOBS=4 \
   -t nanovllm-voxcpm2:latest .
 
-# Tight 16 GB host
+# A10G on a tight 16 GB host
 docker build -f deployment/Dockerfile \
   --build-arg TORCH_CUDA_ARCH_LIST="8.6" \
   --build-arg MAX_JOBS=2 \
   -t nanovllm-voxcpm2:latest .
 
-# < 16 GB RAM (slow but won't OOM)
+# L4 (g6.xlarge, sm_89), 16 GB RAM — USE THIS, plain build will OOM
 docker build -f deployment/Dockerfile \
-  --build-arg TORCH_CUDA_ARCH_LIST="8.6" \
+  --build-arg TORCH_CUDA_ARCH_LIST="8.9" \
   --build-arg MAX_JOBS=1 \
   -t nanovllm-voxcpm2:latest .
+
+# L4 on g6.2xlarge (32 GB), faster
+docker build -f deployment/Dockerfile \
+  --build-arg TORCH_CUDA_ARCH_LIST="8.9" \
+  --build-arg MAX_JOBS=2 \
+  -t nanovllm-voxcpm2:latest .
 ```
+
+### Add swap before building on small hosts (≤ 16 GB RAM)
+
+A single nvcc job for flash-attn can spike past 8 GB; on a 16 GB EC2 the kernel will OOM-kill the build (or the whole instance) without swap. Run **once on the host** before `docker build`:
+
+```bash
+sudo fallocate -l 16G /swapfile
+sudo chmod 600 /swapfile
+sudo mkswap /swapfile
+sudo swapon /swapfile
+free -h   # confirm Swap line is non-zero
+```
+
+Persist across reboots:
+
+```bash
+echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+```
+
+### If a previous build froze / OOM'd the instance
+
+After rebooting, clean up wedged Docker state before retrying:
+
+```bash
+sudo systemctl restart docker
+docker builder prune -af
+df -h /var/lib/docker   # need ≥ 25 GB free
+```
+
+Then rerun the appropriate `docker build` command above for your GPU.
 
 Free disk requirement during the build: ~20–25 GB. Verify with `free -h` and `df -h /var/lib/docker` before building.
 

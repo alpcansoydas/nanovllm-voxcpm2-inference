@@ -1,0 +1,15 @@
+.git
+.DS_Store
+**/.DS_Store
+**/__pycache__
+**/*.pyc
+**/*.pyo
+**/.mypy_cache
+**/.ruff_cache
+**/.pytest_cache
+**/node_modules
+**/dist
+**/build
+**/*.egg-info
+nanovllm-voxcpm-main/.venv
+nanovllm-voxcpm-main/uv.lock

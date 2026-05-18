@@ -1,0 +1,997 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VoxCPM2 — Voice Cloning Demo</title>
+  <style>
+    :root {
+      --bg: #0d1117;
+      --surface: #161b22;
+      --surface2: #21262d;
+      --border: #30363d;
+      --accent: #818cf8;
+      --accent-dark: #6366f1;
+      --text: #e6edf3;
+      --text-muted: #8b949e;
+      --text-dim: #484f58;
+      --success: #3fb950;
+      --warning: #d29922;
+      --error: #f85149;
+      --radius: 6px;
+      --radius-lg: 12px;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      font-size: 14px;
+      line-height: 1.5;
+      min-height: 100vh;
+    }
+
+    /* ─── Header ─────────────────────────────────────────────────────── */
+    header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      height: 56px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 24px;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+    .logo { display: flex; align-items: center; gap: 10px; font-size: 16px; font-weight: 700; }
+    .logo-icon {
+      width: 30px; height: 30px;
+      background: linear-gradient(135deg, #818cf8 0%, #c084fc 100%);
+      border-radius: 7px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 16px;
+    }
+    .header-badge {
+      display: flex; align-items: center; gap: 6px;
+      padding: 4px 12px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+    .status-dot {
+      width: 7px; height: 7px; border-radius: 50%;
+      background: var(--text-dim);
+      flex-shrink: 0;
+    }
+    .status-dot.ready  { background: var(--success); animation: blink 3s ease-in-out infinite; }
+    .status-dot.busy   { background: var(--warning); animation: blink 1s linear infinite; }
+    .status-dot.error  { background: var(--error); }
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.4} }
+
+    /* ─── Layout ──────────────────────────────────────────────────────── */
+    .container {
+      max-width: 1280px;
+      margin: 0 auto;
+      padding: 24px;
+      display: grid;
+      grid-template-columns: 460px 1fr;
+      gap: 24px;
+      align-items: start;
+    }
+    @media (max-width: 960px) { .container { grid-template-columns: 1fr; } }
+
+    /* ─── Card ────────────────────────────────────────────────────────── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 18px;
+      margin-bottom: 16px;
+    }
+    .card:last-child { margin-bottom: 0; }
+    .card-title {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: .08em;
+      color: var(--text-dim);
+      margin-bottom: 14px;
+    }
+
+    /* ─── Tabs ────────────────────────────────────────────────────────── */
+    .tabs {
+      display: flex;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 14px;
+    }
+    .tab-btn {
+      padding: 7px 14px;
+      background: none;
+      border: none;
+      border-bottom: 2px solid transparent;
+      margin-bottom: -1px;
+      color: var(--text-muted);
+      font-size: 13px;
+      cursor: pointer;
+      font-family: inherit;
+      transition: color .15s, border-color .15s;
+    }
+    .tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
+    .tab-btn:hover:not(.active) { color: var(--text); }
+    .tab-pane { display: none; }
+    .tab-pane.active { display: block; }
+
+    /* ─── Form ────────────────────────────────────────────────────────── */
+    .field { margin-bottom: 12px; }
+    .field:last-child { margin-bottom: 0; }
+    label {
+      display: block;
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--text-muted);
+      margin-bottom: 5px;
+    }
+    select, textarea {
+      width: 100%;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--text);
+      font-size: 13px;
+      padding: 7px 10px;
+      outline: none;
+      font-family: inherit;
+      transition: border-color .15s;
+    }
+    select:focus, textarea:focus { border-color: var(--accent); }
+    textarea { resize: vertical; }
+    .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+    /* ─── File drop ───────────────────────────────────────────────────── */
+    .drop-zone {
+      border: 2px dashed var(--border);
+      border-radius: var(--radius);
+      padding: 20px;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color .15s, background .15s;
+    }
+    .drop-zone:hover { border-color: var(--accent); background: rgba(129,140,248,.04); }
+    .drop-zone.dragging { border-color: var(--accent); background: rgba(129,140,248,.08); }
+    .drop-zone.loaded { border-style: solid; border-color: var(--success); }
+    .drop-icon { font-size: 28px; margin-bottom: 6px; }
+    .drop-hint { color: var(--text-muted); font-size: 12px; }
+    .drop-hint span { color: var(--text-dim); }
+    .file-name { color: var(--success); font-size: 13px; margin-top: 4px; word-break: break-all; }
+
+    /* ─── Sliders ─────────────────────────────────────────────────────── */
+    .slider-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+    .slider-row:last-child { margin-bottom: 0; }
+    .slider-label { width: 110px; font-size: 12px; color: var(--text-muted); flex-shrink: 0; }
+    input[type="range"] {
+      flex: 1;
+      -webkit-appearance: none; appearance: none;
+      height: 3px; background: var(--border);
+      border-radius: 2px; outline: none;
+    }
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 14px; height: 14px; border-radius: 50%;
+      background: var(--accent); cursor: pointer;
+    }
+    input[type="number"] {
+      width: 60px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--text);
+      font-size: 12px;
+      padding: 4px 6px;
+      outline: none;
+      text-align: center;
+      font-family: inherit;
+      -moz-appearance: textfield;
+    }
+    input[type="number"]::-webkit-outer-spin-button,
+    input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; }
+    input[type="number"]:focus { border-color: var(--accent); }
+
+    /* ─── Buttons ─────────────────────────────────────────────────────── */
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+      padding: 9px 18px;
+      border: none; border-radius: var(--radius);
+      font-size: 14px; font-weight: 600;
+      font-family: inherit; cursor: pointer;
+      transition: background .15s, opacity .15s, transform .1s;
+    }
+    .btn:active:not(:disabled) { transform: scale(.98); }
+    .btn-primary {
+      background: var(--accent); color: #fff;
+      width: 100%; padding: 11px;
+    }
+    .btn-primary:hover:not(:disabled) { background: var(--accent-dark); }
+    .btn-primary:disabled { opacity: .45; cursor: not-allowed; }
+    .btn-sm {
+      padding: 5px 10px; font-size: 12px; font-weight: 500;
+      background: var(--surface2); color: var(--text-muted);
+      border: 1px solid var(--border);
+    }
+    .btn-sm:hover { border-color: var(--accent); color: var(--accent); }
+
+    /* ─── Spinner ─────────────────────────────────────────────────────── */
+    .spin {
+      display: inline-block; width: 14px; height: 14px;
+      border: 2px solid rgba(255,255,255,.25);
+      border-top-color: #fff; border-radius: 50%;
+      animation: rotate .65s linear infinite;
+    }
+    @keyframes rotate { to { transform: rotate(360deg); } }
+
+    /* ─── Status bar ──────────────────────────────────────────────────── */
+    .status-bar {
+      display: flex; align-items: center; gap: 10px;
+      padding: 10px 12px;
+      background: var(--surface2);
+      border-radius: var(--radius);
+      margin-bottom: 14px;
+      min-height: 44px;
+    }
+    .status-icon { font-size: 16px; flex-shrink: 0; }
+    .status-msg { font-size: 13px; color: var(--text-muted); }
+    .status-msg.ok    { color: var(--success); }
+    .status-msg.warn  { color: var(--warning); }
+    .status-msg.error { color: var(--error); }
+
+    /* ─── Progress ────────────────────────────────────────────────────── */
+    .progress-track {
+      height: 3px; background: var(--border); border-radius: 2px;
+      overflow: hidden; margin-bottom: 14px;
+    }
+    .progress-fill {
+      height: 100%; width: 0;
+      background: linear-gradient(90deg, var(--accent), #c084fc);
+      border-radius: 2px; transition: width .3s;
+    }
+    .progress-fill.indeterminate {
+      width: 35%;
+      animation: slide 1.4s ease-in-out infinite;
+    }
+    @keyframes slide { 0%{transform:translateX(-120%)} 100%{transform:translateX(350%)} }
+
+    /* ─── Waveform ────────────────────────────────────────────────────── */
+    .waveform {
+      display: flex; align-items: center; justify-content: center;
+      gap: 2px;
+      height: 48px;
+      background: var(--surface2);
+      border-radius: var(--radius);
+      padding: 8px 12px;
+      margin-bottom: 10px;
+      overflow: hidden;
+    }
+    .wbar {
+      width: 3px; border-radius: 2px;
+      background: var(--accent); opacity: .25;
+      transition: opacity .3s, height .1s;
+    }
+    .wbar.active {
+      opacity: 1;
+      animation: wv .8s ease-in-out infinite;
+    }
+    @keyframes wv { 0%,100%{transform:scaleY(.3)} 50%{transform:scaleY(1)} }
+
+    /* ─── Audio element ───────────────────────────────────────────────── */
+    audio {
+      width: 100%;
+      outline: none;
+      border-radius: var(--radius);
+    }
+
+    /* ─── Stats ───────────────────────────────────────────────────────── */
+    .stats {
+      display: grid; grid-template-columns: repeat(3,1fr);
+      gap: 10px; margin-top: 14px;
+    }
+    .stat {
+      background: var(--surface2);
+      border-radius: var(--radius);
+      padding: 10px; text-align: center;
+    }
+    .stat-val { font-size: 18px; font-weight: 700; color: var(--accent); }
+    .stat-lbl { font-size: 10px; color: var(--text-dim); text-transform: uppercase; letter-spacing:.06em; margin-top: 2px; }
+
+    /* ─── History ─────────────────────────────────────────────────────── */
+    .history-item {
+      background: var(--surface2);
+      border-radius: var(--radius);
+      padding: 10px 12px;
+      margin-bottom: 10px;
+    }
+    .history-item:last-child { margin-bottom: 0; }
+    .history-meta { font-size: 11px; color: var(--text-dim); margin-bottom: 5px; }
+    .history-text { font-size: 12px; color: var(--text-muted); margin-bottom: 8px;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+    /* ─── Preset preview audio ────────────────────────────────────────── */
+    .preset-preview { margin-top: 10px; }
+    .preset-preview audio { height: 36px; }
+
+    /* ─── Helpers ─────────────────────────────────────────────────────── */
+    .hidden { display: none !important; }
+    .char-count { text-align: right; font-size: 11px; color: var(--text-dim); margin-top: 4px; }
+    .hint-text { font-size: 11px; color: var(--text-dim); margin-top: 4px; }
+    .zero-shot-note {
+      text-align: center; padding: 16px;
+      color: var(--text-muted); font-size: 13px;
+    }
+    .zero-shot-note .big { font-size: 28px; display: block; margin-bottom: 6px; }
+    .output-empty {
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      min-height: 140px; color: var(--text-dim); gap: 8px;
+    }
+    .output-empty .big { font-size: 36px; opacity: .35; }
+    hr { border: none; border-top: 1px solid var(--border); margin: 14px 0; }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <div class="logo-icon">🎙</div>
+    VoxCPM2 Demo
+  </div>
+  <div class="header-badge">
+    <div class="status-dot" id="statusDot"></div>
+    <span id="statusLabel">Checking…</span>
+  </div>
+</header>
+
+<div class="container">
+
+  <!-- ══ Left panel: controls ══════════════════════════════════════════ -->
+  <div>
+
+    <!-- Voice reference -->
+    <div class="card">
+      <div class="card-title">Voice Reference</div>
+      <div class="tabs">
+        <button class="tab-btn active" data-tab="preset">Preset Library</button>
+        <button class="tab-btn" data-tab="upload">Upload Audio</button>
+        <button class="tab-btn" data-tab="zeroshot">Zero-shot</button>
+      </div>
+
+      <!-- Preset tab -->
+      <div class="tab-pane active" id="pane-preset">
+        <div class="row2 field">
+          <div>
+            <label>Language</label>
+            <select id="langSel" onchange="onLang()">
+              <option value="">Loading…</option>
+            </select>
+          </div>
+          <div>
+            <label>Voice Type</label>
+            <select id="voiceSel" onchange="onVoice()">
+              <option value="">Select language</option>
+            </select>
+          </div>
+        </div>
+        <div class="field">
+          <label>Emotion / Style</label>
+          <select id="emotionSel" onchange="onEmotion()">
+            <option value="">Select voice type</option>
+          </select>
+        </div>
+        <div id="presetPreview" class="preset-preview hidden">
+          <label>Preview</label>
+          <audio id="previewAudio" controls></audio>
+        </div>
+      </div>
+
+      <!-- Upload tab -->
+      <div class="tab-pane" id="pane-upload">
+        <div class="field">
+          <div class="drop-zone" id="dropZone">
+            <div id="dropInitial">
+              <div class="drop-icon">🎵</div>
+              <div class="drop-hint">Click or drag &amp; drop audio</div>
+              <div class="drop-hint"><span>WAV · MP3 · FLAC · OGG</span></div>
+            </div>
+            <div id="dropLoaded" class="hidden">
+              <div class="drop-icon">✅</div>
+              <div id="dropFileName" class="file-name"></div>
+              <audio id="uploadPreviewAudio" controls style="margin-top:8px;width:100%;height:36px;"></audio>
+            </div>
+          </div>
+          <input type="file" id="fileInput" accept="audio/*" class="hidden">
+        </div>
+        <div class="field">
+          <label>
+            Transcript <span style="color:var(--text-dim);font-weight:400;">(optional — improves voice cloning)</span>
+          </label>
+          <textarea id="promptText" rows="2"
+            placeholder="Exact words spoken in the reference audio…"></textarea>
+          <div class="hint-text">With transcript → prompt-guided cloning. Without → style-only reference.</div>
+        </div>
+      </div>
+
+      <!-- Zero-shot tab -->
+      <div class="tab-pane" id="pane-zeroshot">
+        <div class="zero-shot-note">
+          <span class="big">🎲</span>
+          Generate speech without any voice reference. The model picks its own voice.
+        </div>
+      </div>
+    </div>
+
+    <!-- Target text -->
+    <div class="card">
+      <div class="card-title">Target Text</div>
+      <div class="field">
+        <textarea id="targetText" rows="6"
+          placeholder="Enter the text to synthesize…&#10;&#10;Supports English, Chinese, and other languages."></textarea>
+        <div class="char-count"><span id="charCount">0</span> chars</div>
+      </div>
+    </div>
+
+    <!-- Parameters -->
+    <div class="card">
+      <div class="card-title">Parameters</div>
+      <div class="slider-row">
+        <div class="slider-label">CFG Scale</div>
+        <input type="range" id="cfgR" min="0.5" max="5" step="0.1" value="1.5" oninput="sync('cfg')">
+        <input type="number" id="cfgN" min="0.5" max="5" step="0.1" value="1.5" oninput="syncN('cfg')">
+      </div>
+      <div class="slider-row">
+        <div class="slider-label">Temperature</div>
+        <input type="range" id="tempR" min="0" max="2" step="0.05" value="1.0" oninput="sync('temp')">
+        <input type="number" id="tempN" min="0" max="2" step="0.05" value="1.0" oninput="syncN('temp')">
+      </div>
+      <div class="slider-row">
+        <div class="slider-label">Max Steps</div>
+        <input type="range" id="stepsR" min="100" max="4000" step="100" value="2000" oninput="sync('steps')">
+        <input type="number" id="stepsN" min="100" max="4000" step="100" value="2000" oninput="syncN('steps')">
+      </div>
+    </div>
+
+    <button class="btn btn-primary" id="genBtn" onclick="generate()">
+      <span id="genBtnInner">🎙 Generate</span>
+    </button>
+
+  </div>
+
+  <!-- ══ Right panel: output ═══════════════════════════════════════════ -->
+  <div>
+    <div class="card">
+      <div class="card-title">Output</div>
+
+      <div class="status-bar">
+        <div class="status-icon" id="outIcon">ℹ️</div>
+        <div class="status-msg" id="outMsg">Enter text and click Generate.</div>
+      </div>
+
+      <div class="progress-track">
+        <div class="progress-fill" id="progressFill"></div>
+      </div>
+
+      <!-- Empty state -->
+      <div class="output-empty" id="emptyState">
+        <div class="big">🔊</div>
+        <div>Generated audio will appear here</div>
+      </div>
+
+      <!-- Audio output -->
+      <div id="audioOut" class="hidden">
+        <div class="waveform" id="waveform"></div>
+        <audio id="mainAudio" controls></audio>
+      </div>
+
+      <!-- Stats -->
+      <div class="stats hidden" id="statsArea">
+        <div class="stat">
+          <div class="stat-val" id="statDur">—</div>
+          <div class="stat-lbl">Duration (s)</div>
+        </div>
+        <div class="stat">
+          <div class="stat-val" id="statTime">—</div>
+          <div class="stat-lbl">Gen Time (s)</div>
+        </div>
+        <div class="stat">
+          <div class="stat-val" id="statRTF">—</div>
+          <div class="stat-lbl">RTF</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- History -->
+    <div class="card">
+      <div class="card-title">History</div>
+      <div id="historyList">
+        <div style="color:var(--text-dim);font-size:13px;text-align:center;padding:16px 0;">
+          No history yet.
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+// ────────────────────────────────────────────────────────────────────────────
+// State
+// ────────────────────────────────────────────────────────────────────────────
+let presets = {};
+let activeTab = 'preset';
+let uploadFile = null;
+let uploadFmt  = 'wav';
+let generating = false;
+let histIdx    = 0;
+
+// ────────────────────────────────────────────────────────────────────────────
+// Init
+// ────────────────────────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+  buildWaveform();
+  setupTabs();
+  setupDrop();
+  loadPresets();
+  pollReady();
+  setInterval(pollReady, 6000);
+
+  document.getElementById('targetText').addEventListener('input', e =>
+    document.getElementById('charCount').textContent = e.target.value.length
+  );
+});
+
+async function pollReady() {
+  const dot   = document.getElementById('statusDot');
+  const label = document.getElementById('statusLabel');
+  try {
+    const r = await fetch('/ready');
+    if (r.ok) {
+      dot.className   = 'status-dot ready';
+      label.textContent = 'Model Ready';
+    } else {
+      dot.className   = 'status-dot busy';
+      label.textContent = 'Loading Model…';
+    }
+  } catch {
+    dot.className   = 'status-dot error';
+    label.textContent = 'Offline';
+  }
+}
+
+async function loadPresets() {
+  try {
+    const r = await fetch('/voice_presets');
+    const d = await r.json();
+    presets = d.presets || {};
+    const sel = document.getElementById('langSel');
+    sel.innerHTML = '<option value="">— Language —</option>';
+    for (const lang of Object.keys(presets).sort())
+      sel.innerHTML += `<option value="${lang}">${lang.toUpperCase()}</option>`;
+  } catch {
+    document.getElementById('langSel').innerHTML = '<option value="">No presets available</option>';
+  }
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Tabs
+// ────────────────────────────────────────────────────────────────────────────
+function setupTabs() {
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const tab = btn.dataset.tab;
+      activeTab = tab;
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b === btn));
+      document.querySelectorAll('.tab-pane').forEach(p =>
+        p.classList.toggle('active', p.id === `pane-${tab}`)
+      );
+    });
+  });
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Preset selectors
+// ────────────────────────────────────────────────────────────────────────────
+function onLang() {
+  const lang = document.getElementById('langSel').value;
+  const voiceSel = document.getElementById('voiceSel');
+  const emotionSel = document.getElementById('emotionSel');
+  voiceSel.innerHTML   = '<option value="">— Voice Type —</option>';
+  emotionSel.innerHTML = '<option value="">— Select voice type —</option>';
+  clearPresetPreview();
+  if (!lang || !presets[lang]) return;
+  for (const vt of Object.keys(presets[lang]).sort())
+    voiceSel.innerHTML += `<option value="${vt}">${vt.replace(/_/g,' ')}</option>`;
+}
+
+function onVoice() {
+  const lang = document.getElementById('langSel').value;
+  const vt   = document.getElementById('voiceSel').value;
+  const emotionSel = document.getElementById('emotionSel');
+  emotionSel.innerHTML = '<option value="">— Emotion —</option>';
+  clearPresetPreview();
+  if (!lang || !vt || !presets[lang]?.[vt]) return;
+  for (const item of presets[lang][vt])
+    emotionSel.innerHTML += `<option value="${item.emotion}">${item.emotion}</option>`;
+}
+
+function onEmotion() {
+  const lang    = document.getElementById('langSel').value;
+  const vt      = document.getElementById('voiceSel').value;
+  const emotion = document.getElementById('emotionSel').value;
+  clearPresetPreview();
+  if (!lang || !vt || !emotion) return;
+  const item = (presets[lang]?.[vt] || []).find(i => i.emotion === emotion);
+  if (!item) return;
+  const previewSrc = item.mp3 || item.wav;
+  if (previewSrc) {
+    document.getElementById('previewAudio').src = previewSrc;
+    document.getElementById('presetPreview').classList.remove('hidden');
+  }
+}
+
+function clearPresetPreview() {
+  document.getElementById('previewAudio').src = '';
+  document.getElementById('presetPreview').classList.add('hidden');
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// File upload / drag-drop
+// ────────────────────────────────────────────────────────────────────────────
+function setupDrop() {
+  const zone = document.getElementById('dropZone');
+  const input = document.getElementById('fileInput');
+
+  zone.addEventListener('click', () => input.click());
+  input.addEventListener('change', e => { if (e.target.files[0]) acceptFile(e.target.files[0]); });
+
+  zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('dragging'); });
+  zone.addEventListener('dragleave', () => zone.classList.remove('dragging'));
+  zone.addEventListener('drop', e => {
+    e.preventDefault();
+    zone.classList.remove('dragging');
+    if (e.dataTransfer.files[0]) acceptFile(e.dataTransfer.files[0]);
+  });
+}
+
+function acceptFile(file) {
+  uploadFile = file;
+  const ext = file.name.split('.').pop().toLowerCase();
+  uploadFmt = { mp3:'mp3', flac:'flac', ogg:'ogg', m4a:'m4a' }[ext] || 'wav';
+
+  document.getElementById('dropFileName').textContent = file.name;
+  document.getElementById('dropInitial').classList.add('hidden');
+  document.getElementById('dropLoaded').classList.remove('hidden');
+  document.getElementById('dropZone').classList.add('loaded');
+
+  const prev = document.getElementById('uploadPreviewAudio');
+  const oldSrc = prev.src;
+  if (oldSrc && oldSrc.startsWith('blob:')) URL.revokeObjectURL(oldSrc);
+  prev.src = URL.createObjectURL(file);
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Sliders
+// ────────────────────────────────────────────────────────────────────────────
+function sync(name)  { document.getElementById(`${name}N`).value = document.getElementById(`${name}R`).value; }
+function syncN(name) { document.getElementById(`${name}R`).value = document.getElementById(`${name}N`).value; }
+
+// ────────────────────────────────────────────────────────────────────────────
+// Waveform bars
+// ────────────────────────────────────────────────────────────────────────────
+function buildWaveform() {
+  const el = document.getElementById('waveform');
+  for (let i = 0; i < 50; i++) {
+    const bar = document.createElement('div');
+    bar.className = 'wbar';
+    bar.style.height = `${6 + Math.random() * 28}px`;
+    bar.style.animationDelay = `${(Math.random() * .8).toFixed(2)}s`;
+    el.appendChild(bar);
+  }
+}
+function setWaveAnim(on) {
+  document.querySelectorAll('.wbar').forEach(b => b.classList.toggle('active', on));
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Generate
+// ────────────────────────────────────────────────────────────────────────────
+async function generate() {
+  if (generating) return;
+
+  const text = document.getElementById('targetText').value.trim();
+  if (!text) { setOut('warn', '⚠️', 'Please enter target text.'); return; }
+
+  const body = {
+    target_text: text,
+    cfg_value: +document.getElementById('cfgN').value,
+    temperature: +document.getElementById('tempN').value,
+    max_generate_length: +document.getElementById('stepsN').value,
+  };
+
+  // ── Voice reference ──────────────────────────────────────────────────────
+  if (activeTab === 'preset') {
+    const lang    = document.getElementById('langSel').value;
+    const vt      = document.getElementById('voiceSel').value;
+    const emotion = document.getElementById('emotionSel').value;
+    if (lang && vt && emotion) {
+      const item = (presets[lang]?.[vt] || []).find(i => i.emotion === emotion);
+      if (item) {
+        const url = item.wav || item.mp3;
+        const fmt = item.wav ? 'wav' : 'mp3';
+        try {
+          setOut('warn', '⏳', 'Loading preset audio…');
+          const b64 = await urlToBase64(url);
+          body.ref_audio_wav_base64 = b64;
+          body.ref_audio_wav_format = fmt;
+        } catch (e) {
+          setOut('error', '❌', `Failed to load preset: ${e.message}`);
+          return;
+        }
+      }
+    }
+  } else if (activeTab === 'upload') {
+    if (uploadFile) {
+      try {
+        setOut('warn', '⏳', 'Reading audio file…');
+        const b64 = await fileToBase64(uploadFile);
+        const transcript = document.getElementById('promptText').value.trim();
+        if (transcript) {
+          body.prompt_wav_base64 = b64;
+          body.prompt_wav_format = uploadFmt;
+          body.prompt_text = transcript;
+        } else {
+          body.ref_audio_wav_base64 = b64;
+          body.ref_audio_wav_format = uploadFmt;
+        }
+      } catch (e) {
+        setOut('error', '❌', `Failed to read file: ${e.message}`);
+        return;
+      }
+    }
+  }
+  // 'zeroshot' → no audio reference fields
+
+  // ── UI: generating state ─────────────────────────────────────────────────
+  generating = true;
+  document.getElementById('genBtn').disabled = true;
+  document.getElementById('genBtnInner').innerHTML = '<span class="spin"></span> Generating…';
+
+  document.getElementById('emptyState').classList.add('hidden');
+  document.getElementById('audioOut').classList.remove('hidden');
+  document.getElementById('statsArea').classList.add('hidden');
+  setOut('warn', '🎵', 'Generating…');
+  setProgress('indeterminate');
+  setWaveAnim(true);
+
+  const t0 = Date.now();
+
+  try {
+    const resp = await fetch('/generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({ detail: resp.statusText }));
+      throw new Error(err.detail || resp.statusText);
+    }
+
+    const sampleRate = parseInt(resp.headers.get('X-Audio-Sample-Rate') || '24000', 10);
+    const audio = document.getElementById('mainAudio');
+
+    // Collect all chunks (for history & accurate duration)
+    const chunks = [];
+    let bytesRx = 0;
+
+    const supportsMediaSource = typeof MediaSource !== 'undefined'
+      && MediaSource.isTypeSupported('audio/mpeg');
+
+    let blobUrl;
+
+    if (supportsMediaSource) {
+      blobUrl = await streamMediaSource(resp, audio, chunks, bytesRx =>
+        setOut('warn', '🎵', `Generating… ${(bytesRx / 1024).toFixed(0)} KB`)
+      );
+    } else {
+      blobUrl = await streamBlob(resp, audio, chunks, bytesRx =>
+        setOut('warn', '🎵', `Buffering… ${(bytesRx / 1024).toFixed(0)} KB`)
+      );
+    }
+
+    const elapsed = (Date.now() - t0) / 1000;
+    setProgress(100);
+    setWaveAnim(false);
+    setOut('ok', '✅', `Done in ${elapsed.toFixed(1)} s`);
+
+    // Stats (duration available after playback metadata loads)
+    audio.addEventListener('loadedmetadata', () => {
+      const dur = audio.duration;
+      if (dur && isFinite(dur)) {
+        document.getElementById('statsArea').classList.remove('hidden');
+        document.getElementById('statDur').textContent  = dur.toFixed(1);
+        document.getElementById('statTime').textContent = elapsed.toFixed(1);
+        document.getElementById('statRTF').textContent  = (elapsed / dur).toFixed(2);
+      }
+    }, { once: true });
+
+    // History entry uses the stable blob url
+    addHistory(blobUrl, text);
+
+  } catch (e) {
+    setOut('error', '❌', `Error: ${e.message}`);
+    setProgress(0);
+    setWaveAnim(false);
+  } finally {
+    generating = false;
+    document.getElementById('genBtn').disabled = false;
+    document.getElementById('genBtnInner').textContent = '🎙 Generate';
+  }
+}
+
+// ── MediaSource streaming ────────────────────────────────────────────────────
+function streamMediaSource(resp, audio, chunks, onProgress) {
+  return new Promise((resolve, reject) => {
+    const ms = new MediaSource();
+    const prevSrc = audio.src;
+    if (prevSrc.startsWith('blob:')) URL.revokeObjectURL(prevSrc);
+    audio.src = URL.createObjectURL(ms);
+
+    const queue = [];
+    let appending = false;
+    let done = false;
+    let sb, totalBytes = 0, started = false;
+
+    function flush() {
+      if (appending || !sb || ms.readyState !== 'open') return;
+      if (queue.length) {
+        appending = true;
+        try { sb.appendBuffer(queue.shift()); } catch (e) { reject(e); }
+      } else if (done) {
+        try { ms.endOfStream(); } catch {}
+        // Build stable blob for history
+        const blob = new Blob(chunks, { type: 'audio/mpeg' });
+        resolve(URL.createObjectURL(blob));
+      }
+    }
+
+    ms.addEventListener('sourceopen', () => {
+      try { sb = ms.addSourceBuffer('audio/mpeg'); }
+      catch (e) { reject(e); return; }
+
+      sb.addEventListener('updateend', () => {
+        appending = false;
+        flush();
+        if (!started && audio.readyState >= 2) {
+          started = true;
+          audio.play().catch(() => {});
+        }
+      });
+
+      (async () => {
+        const reader = resp.body.getReader();
+        try {
+          while (true) {
+            const { done: d, value } = await reader.read();
+            if (d) { done = true; flush(); break; }
+            // Slice to exact bytes (value.buffer may be shared)
+            const buf = value.buffer.slice(value.byteOffset, value.byteOffset + value.byteLength);
+            chunks.push(new Uint8Array(buf));
+            queue.push(buf);
+            totalBytes += buf.byteLength;
+            onProgress(totalBytes);
+            flush();
+          }
+        } catch (e) { reject(e); }
+      })();
+    });
+  });
+}
+
+// ── Blob fallback (non-streaming) ────────────────────────────────────────────
+async function streamBlob(resp, audio, chunks, onProgress) {
+  const reader = resp.body.getReader();
+  let total = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(value);
+    total += value.byteLength;
+    onProgress(total);
+  }
+  const blob = new Blob(chunks, { type: 'audio/mpeg' });
+  const url = URL.createObjectURL(blob);
+  const prevSrc = audio.src;
+  if (prevSrc.startsWith('blob:')) URL.revokeObjectURL(prevSrc);
+  audio.src = url;
+  await audio.play().catch(() => {});
+  return url;
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// History
+// ────────────────────────────────────────────────────────────────────────────
+function addHistory(blobUrl, text) {
+  histIdx++;
+  const list = document.getElementById('historyList');
+  if (histIdx === 1) list.innerHTML = '';
+
+  const el = document.createElement('div');
+  el.className = 'history-item';
+  el.innerHTML = `
+    <div class="history-meta">#${histIdx} · ${new Date().toLocaleTimeString()}</div>
+    <div class="history-text" title="${esc(text)}">${esc(text.length > 90 ? text.slice(0,90)+'…' : text)}</div>
+    <audio controls style="width:100%;height:34px;" src="${esc(blobUrl)}"></audio>
+  `;
+  list.insertBefore(el, list.firstChild);
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// UI helpers
+// ────────────────────────────────────────────────────────────────────────────
+function setOut(type, icon, msg) {
+  document.getElementById('outIcon').textContent = icon;
+  const el = document.getElementById('outMsg');
+  el.textContent = msg;
+  el.className = `status-msg ${type === 'ok' ? 'ok' : type === 'error' ? 'error' : type === 'warn' ? 'warn' : ''}`;
+}
+
+function setProgress(val) {
+  const f = document.getElementById('progressFill');
+  if (val === 'indeterminate') {
+    f.className = 'progress-fill indeterminate';
+    f.style.width = '';
+  } else {
+    f.className = 'progress-fill';
+    f.style.width = `${val}%`;
+  }
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Encoding helpers
+// ────────────────────────────────────────────────────────────────────────────
+async function urlToBase64(url) {
+  const r   = await fetch(url);
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  const buf = await r.arrayBuffer();
+  return bufToBase64(buf);
+}
+
+function fileToBase64(file) {
+  return new Promise((res, rej) => {
+    const rd = new FileReader();
+    rd.onload  = e => res(bufToBase64(e.target.result));
+    rd.onerror = rej;
+    rd.readAsArrayBuffer(file);
+  });
+}
+
+function bufToBase64(buf) {
+  const bytes = new Uint8Array(buf);
+  const CHUNK = 32768;
+  let s = '';
+  for (let i = 0; i < bytes.length; i += CHUNK)
+    s += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
+  return btoa(s);
+}
+
+function esc(s) {
+  return String(s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+</script>
+</body>
+</html>

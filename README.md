@@ -46,7 +46,20 @@ docker build --build-arg TORCH_CUDA_ARCH_LIST="8.0;8.6;8.9" -t voxcpm2-demo:late
 
 ### 2. Run the container
 
-The container downloads `openbmb/VoxCPM2` automatically from HuggingFace on first start. Mount a cache volume so the model is reused on subsequent runs (avoids re-downloading ~several GB each time).
+The container downloads `openbmb/VoxCPM2` automatically from HuggingFace on first start.
+
+```bash
+docker run --rm \
+  --gpus all \
+  -p 8000:8000 \
+  voxcpm2-demo:latest
+```
+
+Then open **http://localhost:8000/ui** in your browser.
+
+> **First start:** model download takes a few minutes depending on your connection.
+
+To avoid re-downloading the model on every run, mount a cache volume:
 
 ```bash
 docker run --rm \
@@ -55,10 +68,6 @@ docker run --rm \
   -v /tmp/hf-cache:/var/cache/nanovllm/hf \
   voxcpm2-demo:latest
 ```
-
-Then open **http://localhost:8000/ui** in your browser.
-
-> **First start:** model download takes a few minutes depending on your connection. Subsequent starts load from cache instantly.
 
 #### Common run options
 

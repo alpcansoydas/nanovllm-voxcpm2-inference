@@ -11,7 +11,6 @@ from fastapi.responses import StreamingResponse
 from numpy.typing import NDArray
 
 from app.api.deps import get_server
-from app.api.routes.voices import load_preset_bytes
 from app.core.metrics import (
     GENERATE_AUDIO_SECONDS_TOTAL,
     GENERATE_STREAM_BYTES_TOTAL,
@@ -40,23 +39,19 @@ def _decode_latents_base64(value: str, field_name: str, feat_dim: int) -> bytes:
 def _validate_generate_prompt(req: GenerateRequest) -> None:
     has_wav = req.prompt_wav_base64 is not None or req.prompt_wav_format is not None
     has_latents = req.prompt_latents_base64 is not None
-    has_preset = req.prompt_preset is not None
     has_ref_wav = req.ref_audio_wav_base64 is not None or req.ref_audio_wav_format is not None
     has_ref_latents = req.ref_audio_latents_base64 is not None
-    has_ref_preset = req.ref_audio_preset is not None
 
-    prompt_sources = sum([bool(has_wav), bool(has_latents), bool(has_preset)])
-    if prompt_sources > 1:
+    if has_wav and has_latents:
         raise HTTPException(
             status_code=400,
-            detail="prompt_wav_*, prompt_latents_base64, and prompt_preset are mutually exclusive",
+            detail="prompt_wav_* and prompt_latents_base64 are mutually exclusive",
         )
 
-    ref_sources = sum([bool(has_ref_wav), bool(has_ref_latents), bool(has_ref_preset)])
-    if ref_sources > 1:
+    if has_ref_wav and has_ref_latents:
         raise HTTPException(
             status_code=400,
-            detail="ref_audio_wav_*, ref_audio_latents_base64, and ref_audio_preset are mutually exclusive",
+            detail="ref_audio_wav_* and ref_audio_latents_base64 are mutually exclusive",
         )
 
     if has_ref_wav and (req.ref_audio_wav_base64 is None or req.ref_audio_wav_format is None):
@@ -78,11 +73,6 @@ def _validate_generate_prompt(req: GenerateRequest) -> None:
     if has_latents:
         if req.prompt_text is None or req.prompt_text == "":
             raise HTTPException(status_code=400, detail="latents prompt requires non-empty prompt_text")
-        return
-
-    if has_preset:
-        if req.prompt_text is None or req.prompt_text == "":
-            raise HTTPException(status_code=400, detail="preset prompt requires non-empty prompt_text")
         return
 
     if req.prompt_text not in (None, ""):
@@ -162,11 +152,6 @@ async def generate(
         prompt_latents = _decode_latents_base64(req.prompt_latents_base64, "prompt_latents_base64", feat_dim)
         assert req.prompt_text is not None
         prompt_text = req.prompt_text
-    elif req.prompt_preset is not None:
-        wav, fmt = load_preset_bytes(cfg.voice_presets_dir, req.prompt_preset)
-        prompt_latents = await server.encode_latents(wav, fmt)
-        assert req.prompt_text is not None
-        prompt_text = req.prompt_text
 
     if req.ref_audio_wav_base64 is not None:
         try:
@@ -177,9 +162,6 @@ async def generate(
         ref_audio_latents = await server.encode_latents(wav, req.ref_audio_wav_format)
     elif req.ref_audio_latents_base64 is not None:
         ref_audio_latents = _decode_latents_base64(req.ref_audio_latents_base64, "ref_audio_latents_base64", feat_dim)
-    elif req.ref_audio_preset is not None:
-        wav, fmt = load_preset_bytes(cfg.voice_presets_dir, req.ref_audio_preset)
-        ref_audio_latents = await server.encode_latents(wav, fmt)
 
     generate_kwargs = {
         "target_text": req.target_text,

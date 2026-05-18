@@ -166,16 +166,6 @@ class GenerateRequest(BaseModel):
         None,
         description="(reference audio) Base64-encoded float32 bytes returned by /encode_latents.",
     )
-
-    prompt_preset: str | None = Field(
-        None,
-        description="(wav prompt) Path to a voice preset file under voice_presets_dir (e.g. 'en/man_voice_deep/en_man_happy.wav'). Mutually exclusive with prompt_wav_base64/prompt_latents_base64.",
-    )
-    ref_audio_preset: str | None = Field(
-        None,
-        description="(reference audio) Path to a preset file under voice_presets_dir. Mutually exclusive with ref_audio_wav_base64/ref_audio_latents_base64.",
-    )
-
     lora_name: str | None = Field(None, description="Registered LoRA adapter name to apply for this request.")
 
     max_generate_length: int = Field(2000, ge=1, description="Maximum number of model generation steps.")

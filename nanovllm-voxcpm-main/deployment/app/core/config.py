@@ -117,27 +117,10 @@ class ServiceConfig:
     mp3: Mp3Config
     server_pool: ServerPoolStartupConfig
     lora: RuntimeLoRAConfig | None
-    voice_presets_dir: str
-
-
-def _default_voice_presets_dir() -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    candidate = os.path.abspath(os.path.join(here, "..", "..", "..", "..", "voice_presets"))
-    return candidate
 
 
 def load_config() -> ServiceConfig:
-    raw_model_path = os.environ.get("NANOVLLM_MODEL_PATH", "openbmb/VoxCPM2")
-    # Treat values that look like local paths ("/...", "~/...", "./...") as filesystem paths;
-    # otherwise pass through verbatim so the engine can resolve it as a HuggingFace repo id
-    # via snapshot_download.
-    if raw_model_path.startswith(("/", "~", "./", "../")):
-        model_path = os.path.expanduser(raw_model_path)
-    else:
-        model_path = raw_model_path
-    voice_presets_dir = os.path.abspath(
-        os.path.expanduser(os.environ.get("VOICE_PRESETS_DIR", _default_voice_presets_dir()))
-    )
+    model_path = os.path.expanduser(os.environ.get("NANOVLLM_MODEL_PATH", "~/VoxCPM1.5"))
 
     mp3_bitrate_kbps = _get_int_env("NANOVLLM_MP3_BITRATE_KBPS", 192)
     mp3_quality = _get_int_env("NANOVLLM_MP3_QUALITY", 2)
@@ -218,7 +201,6 @@ def load_config() -> ServiceConfig:
             devices=pool_devices,
         ),
         lora=runtime_lora_config,
-        voice_presets_dir=voice_presets_dir,
     )
 
 

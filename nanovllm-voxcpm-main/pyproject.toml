@@ -100,6 +100,18 @@ flash-attn = [
 [tool.uv.workspace]
 members = ["deployment"]
 
+# Force torch/torchaudio to the CUDA 12.6 wheel index so the installed CUDA
+# version matches the nvidia/cuda:12.6.x base image used in the Dockerfile.
+# Without this, uv resolves the latest torch (+cu130) which mismatches the
+# system CUDA and causes flash-attn to fail when building from source.
+[[tool.uv.index]]
+name = "pytorch-cu126"
+url = "https://download.pytorch.org/whl/cu126"
+
+[tool.uv.sources]
+torch = { index = "pytorch-cu126" }
+torchaudio = { index = "pytorch-cu126" }
+
 [dependency-groups]
 dev = [
     "black==26.3.1",

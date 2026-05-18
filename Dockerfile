@@ -77,11 +77,14 @@ COPY --chown=appuser:appuser entrypoint.sh          ./entrypoint.sh
 RUN chmod +x /app/entrypoint.sh
 
 # ─── Install Python dependencies ──────────────────────────────────────────────
-# flash-attn is compiled from source here; this step is slow (20-40 min)
-# but produces a single self-contained image.
+# flash-attn is pulled as a pre-built wheel (see pyproject.toml [tool.uv.sources]),
+# so this step now takes a few minutes instead of 20-40 min.
 WORKDIR /app/nanovllm-voxcpm-main
 
-RUN uv sync --all-packages --no-dev -v --compile-bytecode --no-cache --no-editable
+ENV MAX_JOBS=4
+
+RUN --mount=type=cache,target=/home/appuser/.cache/uv,uid=10001,gid=10001 \
+    uv sync --all-packages --no-dev -v --compile-bytecode --no-editable
 
 # ─── Runtime ──────────────────────────────────────────────────────────────────
 EXPOSE 8000

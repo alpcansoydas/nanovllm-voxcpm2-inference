@@ -18,6 +18,8 @@ SERVER_FACTORY = VoxCPM.from_pretrained
 def _read_model_architecture(model_path: str) -> str:
     resolved_model_path = os.path.expanduser(model_path)
     if not os.path.isdir(resolved_model_path):
+        if os.path.isabs(resolved_model_path):
+            raise FileNotFoundError(f"Model path {resolved_model_path} does not exist")
         resolved_model_path = snapshot_download(repo_id=model_path)
     config_file = os.path.join(resolved_model_path, "config.json")
     if not os.path.isfile(config_file):

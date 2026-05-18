@@ -44,33 +44,21 @@ docker build --build-arg TORCH_CUDA_ARCH_LIST="8.9" -t voxcpm2-demo:latest .
 docker build --build-arg TORCH_CUDA_ARCH_LIST="8.0;8.6;8.9" -t voxcpm2-demo:latest .
 ```
 
-### 2. Download the model
+### 2. Run the container
 
-The model must be present on the host before starting the container.
-
-```bash
-# Via HuggingFace Hub CLI
-pip install huggingface_hub
-huggingface-cli download openbmb/VoxCPM2 --local-dir /models/VoxCPM2
-
-# Or via Python
-python3 - <<'EOF'
-from huggingface_hub import snapshot_download
-snapshot_download(repo_id="openbmb/VoxCPM2", local_dir="/models/VoxCPM2")
-EOF
-```
-
-### 3. Run the container
+The container downloads `openbmb/VoxCPM2` automatically from HuggingFace on first start. Mount a cache volume so the model is reused on subsequent runs (avoids re-downloading ~several GB each time).
 
 ```bash
 docker run --rm \
   --gpus all \
   -p 8000:8000 \
-  -v /models/VoxCPM2:/models/VoxCPM2:ro \
+  -v /tmp/hf-cache:/var/cache/nanovllm/hf \
   voxcpm2-demo:latest
 ```
 
 Then open **http://localhost:8000/ui** in your browser.
+
+> **First start:** model download takes a few minutes depending on your connection. Subsequent starts load from cache instantly.
 
 #### Common run options
 
@@ -78,28 +66,20 @@ Then open **http://localhost:8000/ui** in your browser.
 # Use a specific GPU (e.g. GPU index 1)
 docker run --rm --gpus '"device=1"' \
   -p 8000:8000 \
-  -v /models/VoxCPM2:/models/VoxCPM2:ro \
-  voxcpm2-demo:latest
-
-# Cache HuggingFace downloads between runs
-docker run --rm --gpus all \
-  -p 8000:8000 \
-  -v /models/VoxCPM2:/models/VoxCPM2:ro \
   -v /tmp/hf-cache:/var/cache/nanovllm/hf \
   voxcpm2-demo:latest
 
-# Let the container download the model itself (requires internet + HF token)
+# Use a pre-downloaded local copy instead of auto-downloading
 docker run --rm --gpus all \
   -p 8000:8000 \
-  -e NANOVLLM_MODEL_PATH=openbmb/VoxCPM2 \
-  -e HF_TOKEN=hf_your_token_here \
-  -v /tmp/hf-cache:/var/cache/nanovllm/hf \
+  -e NANOVLLM_MODEL_PATH=/models/VoxCPM2 \
+  -v /host/path/to/VoxCPM2:/models/VoxCPM2:ro \
   voxcpm2-demo:latest
 
 # Tune GPU memory and concurrency
 docker run --rm --gpus all \
   -p 8000:8000 \
-  -v /models/VoxCPM2:/models/VoxCPM2:ro \
+  -v /tmp/hf-cache:/var/cache/nanovllm/hf \
   -e NANOVLLM_SERVERPOOL_GPU_MEMORY_UTILIZATION=0.90 \
   -e NANOVLLM_SERVERPOOL_MAX_NUM_SEQS=8 \
   voxcpm2-demo:latest
@@ -317,9 +297,10 @@ The browser UI at **http://localhost:8000/ui** provides:
 - Ensure `--build-arg TORCH_CUDA_ARCH_LIST` matches your GPU
 - Use the `-devel` CUDA base image (the default); `-runtime` is not sufficient
 
-**Model not found**
-- Confirm the model directory is mounted at the correct path and contains `config.json`
-- Check `docker run` has `:ro` (read-only) or omit it; the model directory must be readable
+**Model not found / download fails**
+- Ensure the container has internet access on first start (the model is downloaded from HuggingFace)
+- Mount a cache volume (`-v /tmp/hf-cache:/var/cache/nanovllm/hf`) so the download persists across restarts
+- If using a local copy, check that `NANOVLLM_MODEL_PATH` points to a directory containing `config.json`
 
 **`/ready` returns 503 for a long time**
 - Model loading can take 2–5 minutes on first start (weight loading + CUDA graph capture)

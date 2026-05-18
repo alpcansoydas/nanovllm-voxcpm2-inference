@@ -28,7 +28,7 @@ class VoxCPM:
         lora_config: Any = None,
         **kwargs,
     ):
-        if "~" in model:
+        if "~" in model or os.path.isabs(model):
             model_path = os.path.expanduser(model)
             if not os.path.isdir(model_path):
                 raise ValueError(f"Model path {model_path} does not exist")

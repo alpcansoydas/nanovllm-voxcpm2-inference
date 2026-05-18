@@ -53,11 +53,10 @@ RUN python3 -m pip install --no-cache-dir uv
 # ─── Runtime environment ──────────────────────────────────────────────────────
 ENV NANOVLLM_CACHE_DIR=/var/cache/nanovllm
 
-# Default model location.  Mount your model directory to this path:
-#   docker run -v /host/path/to/VoxCPM2:/models/VoxCPM2 ...
-# Or set NANOVLLM_MODEL_PATH to a HuggingFace repo id (e.g. openbmb/VoxCPM2)
-# and the server will download it on first start (requires internet + HF token).
-ENV NANOVLLM_MODEL_PATH=/models/VoxCPM2
+# Model source: HuggingFace repo id downloaded automatically on first start.
+# To use a pre-downloaded local copy instead, override at runtime:
+#   docker run -e NANOVLLM_MODEL_PATH=/models/VoxCPM2 -v /host/path/to/VoxCPM2:/models/VoxCPM2:ro ...
+ENV NANOVLLM_MODEL_PATH=openbmb/VoxCPM2
 
 # Voice preset audio files bundled into the image.
 ENV NANOVLLM_VOICE_PRESETS_DIR=/app/voice_presets
@@ -74,6 +73,8 @@ USER appuser
 # Build context must be the repo root (nanovllm-voxcpm2-inference/).
 COPY --chown=appuser:appuser nanovllm-voxcpm-main/ ./nanovllm-voxcpm-main/
 COPY --chown=appuser:appuser voice_presets/         ./voice_presets/
+COPY --chown=appuser:appuser entrypoint.sh          ./entrypoint.sh
+RUN chmod +x /app/entrypoint.sh
 
 # ─── Install Python dependencies ──────────────────────────────────────────────
 # flash-attn is compiled from source here; this step is slow (20-40 min)
@@ -89,6 +90,7 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=3 \
   CMD python3 -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"
 
+ENTRYPOINT ["/app/entrypoint.sh"]
 CMD ["uv", "run", "--no-sync", \
      "fastapi", "run", "deployment/app/main.py", \
      "--host", "0.0.0.0", "--port", "8000"]

@@ -10,7 +10,7 @@ Features:
 - Zero-shot generation (no reference audio required)
 - LoRA adapter management at runtime
 - Prometheus metrics, health/readiness probes
-- Single Dockerfile that works on any CUDA GPU (Volta → Hopper)
+- Single Dockerfile targeting NVIDIA L4 by default; GPU arch selectable via `--build-arg`
 
 ---
 
@@ -18,13 +18,14 @@ Features:
 
 ### 1. Build the image
 
-Build context is the repo root. The `flash-attn` extension compiles from source, so this takes **20–40 minutes** on first build.
+Build context is the repo root. The `flash-attn` extension compiles from source. The default target is **L4 / Ada Lovelace (8.9)**, which keeps build time under 10 minutes. Pass `--build-arg TORCH_CUDA_ARCH_LIST` to target a different GPU.
 
 ```bash
+# L4 (default — no build-arg needed)
 docker build -t voxcpm2-demo:latest .
 ```
 
-To restrict to your GPU and speed up the build, pass your compute capability:
+To target a different GPU, pass your compute capability:
 
 | GPU family         | Example cards           | `TORCH_CUDA_ARCH_LIST` |
 |--------------------|-------------------------|------------------------|

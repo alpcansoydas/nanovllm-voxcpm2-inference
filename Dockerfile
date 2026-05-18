@@ -2,15 +2,22 @@
 # CUDA base: use -devel so we can compile flash-attn and other native extensions.
 ARG CUDA_IMAGE=nvidia/cuda:12.6.3-devel-ubuntu22.04
 
-# Cover every mainstream CUDA GPU family so the image runs on any card:
-#   7.0  Volta   (V100)
-#   7.5  Turing  (T4, RTX 20xx)
-#   8.0  Ampere  (A100, A30)
-#   8.6  Ampere  (RTX 30xx, A40, A10)
-#   8.9  Ada     (L4, RTX 40xx)
-#   9.0  Hopper  (H100, H200)
-# Override with --build-arg to restrict to your target and speed up the build.
-ARG TORCH_CUDA_ARCH_LIST="7.0;7.5;8.0;8.6;8.9;9.0"
+# Target GPU architecture(s) for flash-attn / native CUDA extensions.
+# Compiling for fewer arches dramatically reduces build time.
+# Override at build time to match your hardware:
+#
+#   GPU family           | TORCH_CUDA_ARCH_LIST value
+#   ---------------------|---------------------------
+#   L4 / RTX 40xx (Ada) | 8.9          ← default (current target)
+#   A100 / A30 (Ampere) | 8.0
+#   A10 / A40 / RTX 30xx| 8.6
+#   H100 / H200 (Hopper)| 9.0
+#   T4 / RTX 20xx (Tur.)| 7.5
+#   V100 (Volta)         | 7.0
+#   Multi-GPU deployment | 8.0;8.6;8.9;9.0
+#
+# Example: docker build --build-arg TORCH_CUDA_ARCH_LIST="9.0" ...
+ARG TORCH_CUDA_ARCH_LIST="8.9"
 
 # ─── Base image ───────────────────────────────────────────────────────────────
 FROM ${CUDA_IMAGE}

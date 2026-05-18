@@ -1,5 +1,8 @@
 ARG CUDA_IMAGE=nvidia/cuda:12.6.3-devel-ubuntu22.04
-ARG TORCH_CUDA_ARCH_LIST="8.0;8.6;8.9;9.0"
+# Target GPU arch — default is L4 / RTX 40xx (Ada, 8.9). Override at build
+# time for other hardware (8.0=A100, 8.6=A10/A40, 9.0=H100, 7.5=T4, etc.)
+# Example: docker build --build-arg TORCH_CUDA_ARCH_LIST="9.0" ...
+ARG TORCH_CUDA_ARCH_LIST="8.9"
 
 FROM ${CUDA_IMAGE}
 
